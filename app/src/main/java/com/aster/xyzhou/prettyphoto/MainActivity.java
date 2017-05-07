@@ -1,12 +1,15 @@
 package com.aster.xyzhou.prettyphoto;
 
 import android.Manifest;
+import android.content.ContentUris;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
+import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
@@ -17,7 +20,6 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.Switch;
 import android.widget.Toast;
 
 import java.io.File;
@@ -84,7 +86,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void pickPhoto() {
         Intent intent = new Intent("android.intent.action.GET_CONTENT");
         intent.setType("image/*");
-        startActivityForResult(intent);
+        startActivityForResult(intent, PICK_PHOTO);
     }
 
     public void takePhoto() {
@@ -127,20 +129,54 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
             case PICK_PHOTO:
                 if (resultCode == RESULT_OK) {
-                    if (Build.VERSION.SDK_INT >=19) {
-                        handleImageOnKitkat(data);
-                    }
-                } else {
-                    handleImageBeforeKitkat(data);
+                    handleImageOnKitkat(data);
                 }
         }
     }
 
     public void handleImageOnKitkat(Intent intent) {
-
+        String imagePath = null;
+        Uri uri = intent.getData();
+        if (DocumentsContract.isDocumentUri(MainActivity.this, uri)) {
+            String docId = DocumentsContract.getDocumentId(uri);
+            if ("com.android.providers.media.documents".equals(uri.getAuthority())) {
+                String id = docId.split(":")[1];
+                String selection = MediaStore.Images.Media._ID
+                        + "=" + id;
+                imagePath = getImagePath(MediaStore.Images.Media.
+                        EXTERNAL_CONTENT_URI, selection);
+            } else if ("com.android.providers.downloads.documents".equals(uri.getAuthority())) {
+                Uri contentUri = ContentUris.withAppendedId(Uri.parse("content://downloads/public_downloads"), Long.valueOf(docId));
+                imagePath = getImagePath(contentUri, null);
+            }
+        } else if ("content".equalsIgnoreCase(uri.getScheme())) {
+            imagePath = getImagePath(uri, null);
+        } else if ("file".equalsIgnoreCase(uri.getScheme())) {
+            imagePath = uri.getPath();
+        }
+        displayImage(imagePath);
     }
 
-    public void handleImageBeforeKitkat(Intent intent) {
+    private String getImagePath(Uri uri, String selection) {
 
+        String path = null;
+        Cursor cursor = getContentResolver().query(uri, null, selection, null, null);
+        if (cursor != null) {
+            if (cursor.moveToFirst()) {
+                path = cursor.getString(cursor.getColumnIndex(MediaStore.
+                    Images.Media.DATA));
+            }
+            cursor.close();
+        }
+        return path;
+    }
+
+    private void displayImage(String imagePath) {
+        if (imagePath != null) {
+            Bitmap bitmap = BitmapFactory.decodeFile(imagePath);
+            mPhoto.setImageBitmap(bitmap);
+        } else {
+            Toast.makeText(MainActivity.this, "failed to get photo", Toast.LENGTH_SHORT).show();
+        }
     }
 }
